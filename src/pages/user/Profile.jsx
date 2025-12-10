@@ -102,16 +102,32 @@ export default function Profile() {
   return (
     <div className="max-w-5xl mx-auto py-12 px-6">
       <div className="bg-white rounded-3xl shadow-xl p-8">
-        {/* Avatar và tên */}
-        <div className="flex flex-col items-center mb-8">
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-            alt="avatar"
-            className="w-32 h-32 rounded-full border-4 border-blue-500 shadow-lg mb-4"
-          />
-          <h2 className="text-3xl font-bold text-blue-700">{user.FullName}</h2>
-          <p className="text-gray-500">{user.Email}</p>
-        </div>
+        {/* Avatar + Icon chỉnh sửa */}
+<div className="flex flex-col items-center mb-8 relative">
+  
+  {/* Avatar */}
+  <div className="relative">
+    <img
+      src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+      alt="avatar"
+      className="w-32 h-32 rounded-full border-4 border-blue-500 shadow-lg"
+    />
+
+    {/* Icon bút */}
+    <button
+      onClick={editMode ? handleSave : handleEditToggle}
+      className="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full shadow hover:bg-blue-700 transition-all"
+      title={editMode ? "Lưu thay đổi" : "Chỉnh sửa thông tin"}
+    >
+      {editMode ? <FaSave /> : <FaEdit />}
+    </button>
+  </div>
+
+  {/* Name + Email */} 
+  <h2 className="text-3xl font-bold text-blue-700 mt-4">{user.FullName}</h2>
+  <p className="text-gray-500">{user.Email}</p>
+</div>
+
 
         {/* Tabs */}
         <div className="flex justify-center mb-8 rounded-lg overflow-hidden shadow-sm">
@@ -140,7 +156,7 @@ export default function Profile() {
         {/* Nội dung tab */}
         {activeTab === "info" ? (
           <div className="bg-gray-50 p-8 rounded-2xl shadow-inner space-y-4 relative">
-            <button
+            {/* <button
               onClick={editMode ? handleSave : handleEditToggle}
               className="absolute top-6 right-6 bg-blue-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-blue-700 transition-all"
             >
@@ -153,7 +169,7 @@ export default function Profile() {
                   <FaEdit /> Chỉnh sửa
                 </>
               )}
-            </button>
+            </button> */}
 
             {/* Thông tin cá nhân */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

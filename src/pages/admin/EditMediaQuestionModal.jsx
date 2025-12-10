@@ -11,6 +11,14 @@ export default function EditMediaQuestionModal({
 }) {
     const [formMedia, setFormMedia] = useState({ ...media });
 
+    // Chuẩn hóa đường dẫn từ public/
+    const getPublicUrl = (path) => {
+        if (!path) return "";
+        if (path.startsWith("data:")) return path; // base64 file upload
+        if (path.startsWith("/")) return path;     // đã đúng
+        return "/" + path; // tự thêm / nếu thiếu
+    };
+
     // ===== Gắn choice theo từng question =====
     const [formQuestions, setFormQuestions] = useState(
         questions.map((q) => ({
@@ -61,13 +69,12 @@ export default function EditMediaQuestionModal({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl relative ring-1 ring-gray-200 flex flex-col overflow-hidden">
 
-                {/* HEADER CỐ ĐỊNH */}
+                {/* HEADER */}
                 <div className="sticky top-0 bg-white z-10 p-6 border-b text-center relative">
                     <h2 className="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-700">
                         Chỉnh sửa MediaQuestion #{media.ID}
                     </h2>
 
-                    {/* Nút đóng */}
                     <button
                         onClick={onClose}
                         className="absolute top-1/2 right-6 -translate-y-1/2 text-gray-600 hover:text-black transition-colors duration-200"
@@ -85,11 +92,11 @@ export default function EditMediaQuestionModal({
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
                             {/* IMAGE */}
                             <div>
                                 <label className="font-semibold text-gray-700 mb-2 block">Image</label>
 
-                                {/* URL */}
                                 <input
                                     type="text"
                                     value={formMedia.ImageUrl}
@@ -98,7 +105,6 @@ export default function EditMediaQuestionModal({
                                     placeholder="Nhập URL hoặc chọn file"
                                 />
 
-                                {/* FILE SELECT */}
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -106,10 +112,9 @@ export default function EditMediaQuestionModal({
                                         const file = e.target.files[0];
                                         if (!file) return;
 
-                                        // đọc file để preview
                                         const reader = new FileReader();
                                         reader.onload = (ev) => {
-                                            handleMediaChange("ImageUrl", ev.target.result); // base64
+                                            handleMediaChange("ImageUrl", ev.target.result);
                                         };
                                         reader.readAsDataURL(file);
                                     }}
@@ -118,7 +123,7 @@ export default function EditMediaQuestionModal({
 
                                 {formMedia.ImageUrl && (
                                     <img
-                                        src={formMedia.ImageUrl}
+                                        src={getPublicUrl(formMedia.ImageUrl)}
                                         alt="Preview"
                                         className="mt-4 w-56 h-40 object-cover rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-200"
                                     />
@@ -129,7 +134,6 @@ export default function EditMediaQuestionModal({
                             <div>
                                 <label className="font-semibold text-gray-700 mb-2 block">Audio</label>
 
-                                {/* URL */}
                                 <input
                                     type="text"
                                     value={formMedia.AudioUrl}
@@ -138,7 +142,6 @@ export default function EditMediaQuestionModal({
                                     placeholder="Nhập URL hoặc chọn file"
                                 />
 
-                                {/* FILE SELECT */}
                                 <input
                                     type="file"
                                     accept="audio/*"
@@ -148,7 +151,7 @@ export default function EditMediaQuestionModal({
 
                                         const reader = new FileReader();
                                         reader.onload = (ev) => {
-                                            handleMediaChange("AudioUrl", ev.target.result); // base64
+                                            handleMediaChange("AudioUrl", ev.target.result);
                                         };
                                         reader.readAsDataURL(file);
                                     }}
@@ -157,7 +160,11 @@ export default function EditMediaQuestionModal({
                                 {formMedia.AudioUrl && (
                                     <div className="mt-4 flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                         <Volume2 className="text-blue-600" />
-                                        <audio controls src={formMedia.AudioUrl} className="flex-1" />
+                                        <audio
+                                            controls
+                                            src={getPublicUrl(formMedia.AudioUrl)}
+                                            className="flex-1"
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -214,7 +221,6 @@ export default function EditMediaQuestionModal({
                                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-blue-300 focus:border-blue-500 transition-all duration-200 shadow-sm resize-none"
                                 />
 
-                                {/* Choices */}
                                 <p className="mt-4 font-semibold text-gray-700">Đáp án:</p>
 
                                 <div className="space-y-3 mt-3">
@@ -225,6 +231,7 @@ export default function EditMediaQuestionModal({
                                                 ? "bg-green-50 border-green-400 shadow-md"
                                                 : "bg-gray-50 border-gray-300 hover:border-gray-400"
                                                 }`}
+
                                         >
                                             <div className="flex items-center gap-4">
 

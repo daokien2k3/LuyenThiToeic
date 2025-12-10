@@ -34,8 +34,9 @@ function App() {
               <Route index element={<Home />} />
               <Route path="tests" element={<Tests />} />
               <Route path="tests/:id" element={<TestDetail />} />
-              <Route path="dotest" element={<DoTest />} />
-              <Route path="result" element={<Result />} />
+              {/* <Route path="dotest" element={<DoTest />} /> */}
+              <Route path="/dotests/:id" element={<DoTest />} />
+              <Route path="result/:attemptID" element={<Result />} />
               <Route path="statistics" element={<Statistic />} />
               <Route path="profile" element={<Profile />} />
             </Routes>

@@ -76,7 +76,7 @@ export default function AdminQuestionManager() {
                         onClick={() => setIsAddOpen(true)}
                     >
                         <Plus className="w-5 h-5" />
-                        Thêm Media Question
+                        Thêm câu hỏi
                     </button>
                 </div>
 
