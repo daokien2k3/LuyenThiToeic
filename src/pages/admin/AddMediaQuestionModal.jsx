@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Image, Volume2, Save, RotateCcw, Loader2, Plus, Trash2, FileText, Settings } from "lucide-react";
+import { X, Image, Volume2, Save, RotateCcw, Loader2, Plus, Trash2, FileText, Settings, Upload } from "lucide-react";
 
 export default function AddMediaQuestionModal({ onClose }) {
     const [title, setTitle] = useState("");
@@ -11,7 +11,13 @@ export default function AddMediaQuestionModal({ onClose }) {
     const [tags, setTags] = useState("");
     
     const [imageUrl, setImageUrl] = useState("");
+    const [imageFilename, setImageFilename] = useState("");
+    const [imageUploading, setImageUploading] = useState(false);
+    
     const [audioUrl, setAudioUrl] = useState("");
+    const [audioFilename, setAudioFilename] = useState("");
+    const [audioUploading, setAudioUploading] = useState(false);
+    
     const [script, setScript] = useState("");
     
     const [questions, setQuestions] = useState([
@@ -57,10 +63,116 @@ export default function AddMediaQuestionModal({ onClose }) {
         setQuestions(questions.filter((_, i) => i !== index));
     };
 
-    const handleFileToBase64 = (file, setUrl) => {
-        const reader = new FileReader();
-        reader.onload = (e) => setUrl(e.target.result);
-        reader.readAsDataURL(file);
+    const handleImageUpload = async (file) => {
+        if (!file) return;
+        
+        setImageUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('image', file); // Changed from 'file' to 'image'
+
+            const response = await fetch(`${API_URL}/upload/image`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            
+            console.log('=== IMAGE UPLOAD RESPONSE ===');
+            console.log('Result:', result);
+            console.log('URL:', result.data?.url);
+            console.log('============================');
+            
+            if (result.success && result.data?.url) {
+                setImageUrl(result.data.url);
+                setImageFilename(result.data.filename);
+            } else {
+                throw new Error(result.message || 'Upload failed');
+            }
+        } catch (err) {
+            alert('Lỗi upload ảnh: ' + err.message);
+            console.error('Image upload error:', err);
+        } finally {
+            setImageUploading(false);
+        }
+    };
+
+    const handleAudioUpload = async (file) => {
+        if (!file) return;
+        
+        setAudioUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('audio', file); // Changed from 'file' to 'audio'
+
+            const response = await fetch(`${API_URL}/upload/audio`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            
+            console.log('=== AUDIO UPLOAD RESPONSE ===');
+            console.log('Result:', result);
+            console.log('URL:', result.data?.url);
+            console.log('============================');
+            
+            if (result.success && result.data?.url) {
+                setAudioUrl(result.data.url);
+                setAudioFilename(result.data.filename);
+            } else {
+                throw new Error(result.message || 'Upload failed');
+            }
+        } catch (err) {
+            alert('Lỗi upload audio: ' + err.message);
+            console.error('Audio upload error:', err);
+        } finally {
+            setAudioUploading(false);
+        }
+    };
+
+    const handleDeleteFile = async (filename, type) => {
+        if (!filename) return;
+        
+        try {
+            const response = await fetch(`${API_URL}/upload`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (!response.ok) {
+                throw new Error('Delete failed');
+            }
+
+            if (type === 'image') {
+                setImageUrl("");
+                setImageFilename("");
+            } else if (type === 'audio') {
+                setAudioUrl("");
+                setAudioFilename("");
+            }
+        } catch (err) {
+            alert('Lỗi xóa file: ' + err.message);
+            console.error('Delete file error:', err);
+        }
     };
 
     const validateForm = () => {
@@ -101,17 +213,28 @@ export default function AddMediaQuestionModal({ onClose }) {
         setError(null);
 
         try {
+            // Build Media object with only valid fields
+            const mediaPayload = {
+                Skill: skill,
+                Type: type,
+                Section: section
+            };
+            
+            // Only add optional fields if they have valid values
+            if (script && script.trim()) {
+                mediaPayload.Script = script.trim();
+            }
+            if (imageUrl && imageUrl.trim()) {
+                mediaPayload.ImageUrl = imageUrl.trim();
+            }
+            if (audioUrl && audioUrl.trim()) {
+                mediaPayload.AudioUrl = audioUrl.trim();
+            }
+
             const payload = {
                 Title: title,
                 Description: description,
-                Media: {
-                    Skill: skill,
-                    Type: type,
-                    Section: section,
-                    Script: script || undefined,
-                    ImageUrl: imageUrl || undefined,
-                    AudioUrl: audioUrl || undefined
-                },
+                Media: mediaPayload,
                 Questions: questions.map((q, index) => ({
                     QuestionText: q.text,
                     OrderInGroup: index + 1,
@@ -124,6 +247,13 @@ export default function AddMediaQuestionModal({ onClose }) {
                 Difficulty: difficulty,
                 Tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : []
             };
+
+            console.log('=== DEBUG PAYLOAD ===');
+            console.log('ImageUrl:', imageUrl);
+            console.log('AudioUrl:', audioUrl);
+            console.log('Media payload:', mediaPayload);
+            console.log('Full payload:', JSON.stringify(payload, null, 2));
+            console.log('====================');
 
             console.log('Sending payload:', JSON.stringify(payload, null, 2));
 
@@ -140,7 +270,6 @@ export default function AddMediaQuestionModal({ onClose }) {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('API Error Details:', errorData);
                 
-                // Hiển thị chi tiết lỗi validation nếu có
                 if (errorData.errors) {
                     const errorMessages = Object.entries(errorData.errors)
                         .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
@@ -382,14 +511,25 @@ export default function AddMediaQuestionModal({ onClose }) {
                                             className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all"
                                             placeholder="URL hình ảnh"
                                         />
-                                        <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 cursor-pointer transition-all">
-                                            <span className="text-sm text-gray-600">📁 Hoặc chọn file từ máy</span>
+                                        <label className={`flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 cursor-pointer transition-all ${imageUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            {imageUploading ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    <span className="text-sm text-gray-600">Đang tải lên...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload size={16} />
+                                                    <span className="text-sm text-gray-600">📁 Tải ảnh lên từ máy</span>
+                                                </>
+                                            )}
                                             <input
                                                 type="file"
                                                 accept="image/*"
+                                                disabled={imageUploading}
                                                 onChange={(e) => {
                                                     if (e.target.files[0]) {
-                                                        handleFileToBase64(e.target.files[0], setImageUrl);
+                                                        handleImageUpload(e.target.files[0]);
                                                     }
                                                 }}
                                                 className="hidden"
@@ -404,10 +544,10 @@ export default function AddMediaQuestionModal({ onClose }) {
                                                     className="w-full h-48 object-cover rounded-xl shadow-md"
                                                 />
                                                 <button
-                                                    onClick={() => setImageUrl("")}
-                                                    className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    onClick={() => handleDeleteFile(imageFilename, 'image')}
+                                                    className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                                                 >
-                                                    <X size={16} />
+                                                    <Trash2 size={16} />
                                                 </button>
                                             </div>
                                         )}
@@ -425,14 +565,25 @@ export default function AddMediaQuestionModal({ onClose }) {
                                             className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all"
                                             placeholder="URL audio"
                                         />
-                                        <label className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 cursor-pointer transition-all">
-                                            <span className="text-sm text-gray-600">🎵 Hoặc chọn file từ máy</span>
+                                        <label className={`flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 hover:bg-purple-50 cursor-pointer transition-all ${audioUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                            {audioUploading ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    <span className="text-sm text-gray-600">Đang tải lên...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload size={16} />
+                                                    <span className="text-sm text-gray-600">🎵 Tải audio lên từ máy</span>
+                                                </>
+                                            )}
                                             <input
                                                 type="file"
                                                 accept="audio/*"
+                                                disabled={audioUploading}
                                                 onChange={(e) => {
                                                     if (e.target.files[0]) {
-                                                        handleFileToBase64(e.target.files[0], setAudioUrl);
+                                                        handleAudioUpload(e.target.files[0]);
                                                     }
                                                 }}
                                                 className="hidden"
@@ -443,9 +594,10 @@ export default function AddMediaQuestionModal({ onClose }) {
                                             <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
                                                 <audio controls src={audioUrl} className="w-full" />
                                                 <button
-                                                    onClick={() => setAudioUrl("")}
-                                                    className="mt-2 text-sm text-red-600 hover:text-red-700 font-medium"
+                                                    onClick={() => handleDeleteFile(audioFilename, 'audio')}
+                                                    className="mt-2 text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
                                                 >
+                                                    <Trash2 size={14} />
                                                     Xóa audio
                                                 </button>
                                             </div>

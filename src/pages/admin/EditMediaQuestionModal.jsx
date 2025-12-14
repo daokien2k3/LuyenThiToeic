@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Image, Volume2, Save, RotateCcw, AlertCircle, CheckCircle } from "lucide-react";
+import { X, Image, Volume2, Save, RotateCcw, AlertCircle, CheckCircle, Loader2, Upload, Trash2 } from "lucide-react";
 
 export default function EditMediaQuestionModal({ media, onClose }) {
     const [loading, setLoading] = useState(true);
@@ -12,6 +12,9 @@ export default function EditMediaQuestionModal({ media, onClose }) {
     
     const [updateStatus, setUpdateStatus] = useState({});
     const [mediaUpdateStatus, setMediaUpdateStatus] = useState(null);
+    
+    const [imageUploading, setImageUploading] = useState(false);
+    const [audioUploading, setAudioUploading] = useState(false);
 
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
     const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || "";
@@ -60,6 +63,136 @@ export default function EditMediaQuestionModal({ media, onClose }) {
             console.error('Error fetching media detail:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleImageUpload = async (file) => {
+        if (!file) return;
+        
+        setImageUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('image', file); // Changed from 'file' to 'image'
+
+            const response = await fetch(`${API_URL}/upload/image`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            
+            if (result.success) {
+                setFormMedia(prev => ({
+                    ...prev,
+                    Media: { 
+                        ...prev.Media, 
+                        ImageUrl: result.data.url,
+                        ImageFilename: result.data.filename
+                    }
+                }));
+                setMediaUpdateStatus(null);
+            } else {
+                throw new Error(result.message || 'Upload failed');
+            }
+        } catch (err) {
+            alert('Lỗi upload ảnh: ' + err.message);
+            console.error('Image upload error:', err);
+        } finally {
+            setImageUploading(false);
+        }
+    };
+
+    const handleAudioUpload = async (file) => {
+        if (!file) return;
+        
+        setAudioUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('audio', file); // Changed from 'file' to 'audio'
+
+            const response = await fetch(`${API_URL}/upload/audio`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            
+            if (result.success) {
+                setFormMedia(prev => ({
+                    ...prev,
+                    Media: { 
+                        ...prev.Media, 
+                        AudioUrl: result.data.url,
+                        AudioFilename: result.data.filename
+                    }
+                }));
+                setMediaUpdateStatus(null);
+            } else {
+                throw new Error(result.message || 'Upload failed');
+            }
+        } catch (err) {
+            alert('Lỗi upload audio: ' + err.message);
+            console.error('Audio upload error:', err);
+        } finally {
+            setAudioUploading(false);
+        }
+    };
+
+    const getFilenameFromUrl = (url) => {
+        if (!url) return null;
+        const parts = url.split('/');
+        return parts[parts.length - 1];
+    };
+
+    const handleDeleteFile = async (url, type) => {
+        if (!url) return;
+        
+        const filename = getFilenameFromUrl(url);
+        if (!filename) return;
+        
+        try {
+            const response = await fetch(`${API_URL}/upload`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${ADMIN_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (!response.ok) {
+                throw new Error('Delete failed');
+            }
+
+            if (type === 'image') {
+                setFormMedia(prev => ({
+                    ...prev,
+                    Media: { ...prev.Media, ImageUrl: "", ImageFilename: "" }
+                }));
+            } else if (type === 'audio') {
+                setFormMedia(prev => ({
+                    ...prev,
+                    Media: { ...prev.Media, AudioUrl: "", AudioFilename: "" }
+                }));
+            }
+            setMediaUpdateStatus(null);
+        } catch (err) {
+            alert('Lỗi xóa file: ' + err.message);
+            console.error('Delete file error:', err);
         }
     };
 
@@ -175,6 +308,24 @@ export default function EditMediaQuestionModal({ media, onClose }) {
         try {
             setMediaUpdateStatus('loading');
 
+            // Build Media object with only valid fields
+            const mediaPayload = {
+                Skill: formMedia.Media.Skill,
+                Type: formMedia.Media.Type,
+                Section: formMedia.Media.Section
+            };
+            
+            // Only add optional fields if they have valid values
+            if (formMedia.Media.Script && formMedia.Media.Script.trim()) {
+                mediaPayload.Script = formMedia.Media.Script.trim();
+            }
+            if (formMedia.Media.ImageUrl && formMedia.Media.ImageUrl.trim()) {
+                mediaPayload.ImageUrl = formMedia.Media.ImageUrl.trim();
+            }
+            if (formMedia.Media.AudioUrl && formMedia.Media.AudioUrl.trim()) {
+                mediaPayload.AudioUrl = formMedia.Media.AudioUrl.trim();
+            }
+
             const response = await fetch(`${API_URL}/media-groups/${media.MediaQuestionID}`, {
                 method: 'PUT',
                 headers: {
@@ -186,14 +337,7 @@ export default function EditMediaQuestionModal({ media, onClose }) {
                     Description: formMedia.Description,
                     Difficulty: formMedia.Difficulty,
                     Tags: formMedia.Tags,
-                    Media: {
-                        AudioUrl: formMedia.Media.AudioUrl,
-                        ImageUrl: formMedia.Media.ImageUrl,
-                        Script: formMedia.Media.Script,
-                        Skill: formMedia.Media.Skill,
-                        Type: formMedia.Media.Type,
-                        Section: formMedia.Media.Section
-                    }
+                    Media: mediaPayload
                 })
             });
 
@@ -305,24 +449,109 @@ export default function EditMediaQuestionModal({ media, onClose }) {
                                 </select>
                             </div>
 
+                            {/* IMAGE SECTION */}
                             <div>
-                                <label className="font-semibold text-gray-700 mb-2 block">Audio URL</label>
-                                <input
-                                    type="text"
-                                    value={formMedia?.Media?.AudioUrl || ''}
-                                    onChange={(e) => handleMediaFieldChange("AudioUrl", e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="font-semibold text-gray-700 mb-2 block">Image URL</label>
+                                <label className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <Image size={16} /> Image URL
+                                </label>
                                 <input
                                     type="text"
                                     value={formMedia?.Media?.ImageUrl || ''}
                                     onChange={(e) => handleMediaFieldChange("ImageUrl", e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400"
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 mb-3"
                                 />
+                                
+                                <label className={`flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-all ${imageUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    {imageUploading ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span className="text-sm text-gray-600">Đang tải lên...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload size={16} />
+                                            <span className="text-sm text-gray-600">📁 Tải ảnh mới lên</span>
+                                        </>
+                                    )}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={imageUploading}
+                                        onChange={(e) => {
+                                            if (e.target.files[0]) {
+                                                handleImageUpload(e.target.files[0]);
+                                            }
+                                        }}
+                                        className="hidden"
+                                    />
+                                </label>
+
+                                {formMedia?.Media?.ImageUrl && (
+                                    <div className="mt-3 relative group">
+                                        <img
+                                            src={formMedia.Media.ImageUrl}
+                                            alt="Preview"
+                                            className="w-full h-48 object-cover rounded-xl shadow-md"
+                                        />
+                                        <button
+                                            onClick={() => handleDeleteFile(formMedia.Media.ImageUrl, 'image')}
+                                            className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* AUDIO SECTION */}
+                            <div>
+                                <label className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <Volume2 size={16} /> Audio URL
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formMedia?.Media?.AudioUrl || ''}
+                                    onChange={(e) => handleMediaFieldChange("AudioUrl", e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 mb-3"
+                                />
+                                
+                                <label className={`flex items-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-all ${audioUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    {audioUploading ? (
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span className="text-sm text-gray-600">Đang tải lên...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload size={16} />
+                                            <span className="text-sm text-gray-600">🎵 Tải audio mới lên</span>
+                                        </>
+                                    )}
+                                    <input
+                                        type="file"
+                                        accept="audio/*"
+                                        disabled={audioUploading}
+                                        onChange={(e) => {
+                                            if (e.target.files[0]) {
+                                                handleAudioUpload(e.target.files[0]);
+                                            }
+                                        }}
+                                        className="hidden"
+                                    />
+                                </label>
+
+                                {formMedia?.Media?.AudioUrl && (
+                                    <div className="mt-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+                                        <audio controls src={formMedia.Media.AudioUrl} className="w-full" />
+                                        <button
+                                            onClick={() => handleDeleteFile(formMedia.Media.AudioUrl, 'audio')}
+                                            className="mt-2 text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
+                                        >
+                                            <Trash2 size={14} />
+                                            Xóa audio
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
