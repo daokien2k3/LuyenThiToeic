@@ -22,58 +22,99 @@ export default function Profile() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [editedUser, setEditedUser] = useState({});
   const navigate = useNavigate();
 
+  const baseUrl = import.meta.env.VITE_API_URL;
+  const token = import.meta.env.VITE_STUDENT_TOKEN;
+
   useEffect(() => {
-    const currentUserId = 3; // ví dụ user hiện tại
-
-    fetch("/data/toeicPractice.json")
-      .then((res) => res.json())
-      .then((data) => {
-        const foundUser = data.users.find((u) => u.ID === currentUserId);
-        setUser(foundUser);
-        setEditedUser(foundUser);
-
-        const studentProfile = data.studentProfiles.find(
-          (p) => p.UserID === currentUserId
-        );
-        setProfile(studentProfile);
-
-        const userAttempts = data.attempts
-          .filter((a) => a.StudentProfileID === studentProfile?.ID)
-          .map((a) => {
-            const exam = data.exams.find((e) => e.ID === a.ExamID);
-            const attemptAnswers = data.attemptAnswers.filter(
-              (ans) => ans.AttemptID === a.ID
-            );
-            const correctQuestion = attemptAnswers.filter(
-              (ans) => ans.IsCorrect
-            ).length;
-            const incorrectQuestion = attemptAnswers.filter(
-              (ans) => !ans.IsCorrect
-            ).length;
-
-            return {
-              ...a,
-              ExamId: exam?.ID,
-              title: exam?.Title,
-              totalScore: a.ScoreReading + a.ScoreListening,
-              startAt: a.StartedAt,
-              finishAt: a.SubmittedAt,
-              correctQuestion,
-              incorrectQuestion,
-              timeTest: Math.round(
-                (new Date(a.SubmittedAt) - new Date(a.StartedAt)) / 60000
-              )
-            };
-          });
-
-        setResults(userAttempts);
-      })
-      .catch((err) => console.error("Lỗi khi tải dữ liệu:", err));
+    fetchUserData();
+    fetchAttemptHistory();
   }, []);
+
+  const fetchUserData = async () => {
+    try {
+      // TODO: Thay đổi API endpoint này theo backend của bạn
+      // Ví dụ: const response = await fetch(`${baseUrl}/users/me`, {...})
+      
+      // Tạm thời dùng dữ liệu mock
+      const mockUser = {
+        ID: 1,
+        FullName: "Nguyễn Văn A",
+        Email: "user@example.com",
+        Sex: "Nam",
+        Phone: "0123456789",
+        Birthday: "2000-01-01",
+        Address: "Hà Nội",
+        CreateAt: "2024-01-01"
+      };
+      
+      const mockProfile = {
+        ID: 1,
+        UserID: 1,
+        TargetScore: 800,
+        PlacementLevel: "Intermediate"
+      };
+
+      setUser(mockUser);
+      setEditedUser(mockUser);
+      setProfile(mockProfile);
+    } catch (err) {
+      console.error("Lỗi khi tải thông tin người dùng:", err);
+    }
+  };
+
+  const fetchAttemptHistory = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${baseUrl}/attempts/history?submittedOnly=true`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Không thể tải lịch sử thi');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        const formattedResults = data.data.map((attempt) => {
+          const totalScore = (attempt.ScoreReading || 0) + (attempt.ScoreListening || 0);
+          const startTime = new Date(attempt.StartedAt);
+          const endTime = new Date(attempt.SubmittedAt);
+          const timeTest = Math.round((endTime - startTime) / 60000);
+
+          return {
+            ID: attempt.ID,
+            ExamId: attempt.ExamID,
+            title: attempt.exam?.Title || "Bài thi không có tiêu đề",
+            totalScore,
+            ScoreReading: attempt.ScoreReading || 0,
+            ScoreListening: attempt.ScoreListening || 0,
+            ScorePercent: attempt.ScorePercent || 0,
+            startAt: new Date(attempt.StartedAt).toLocaleString('vi-VN'),
+            finishAt: new Date(attempt.SubmittedAt).toLocaleString('vi-VN'),
+            timeTest,
+            Type: attempt.Type,
+            examType: attempt.exam?.examType?.Description || "Không rõ"
+          };
+        });
+
+        setResults(formattedResults);
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải lịch sử thi:", err);
+      alert("Không thể tải lịch sử thi. Vui lòng thử lại sau.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEditToggle = () => setEditMode(!editMode);
 
@@ -83,6 +124,8 @@ export default function Profile() {
   };
 
   const handleSave = () => {
+    // TODO: Gọi API để lưu thông tin user
+    // await fetch(`${baseUrl}/users/update`, {...})
     setUser(editedUser);
     setEditMode(false);
     alert("Cập nhật thông tin thành công!");
@@ -103,31 +146,29 @@ export default function Profile() {
     <div className="max-w-5xl mx-auto py-12 px-6">
       <div className="bg-white rounded-3xl shadow-xl p-8">
         {/* Avatar + Icon chỉnh sửa */}
-<div className="flex flex-col items-center mb-8 relative">
-  
-  {/* Avatar */}
-  <div className="relative">
-    <img
-      src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-      alt="avatar"
-      className="w-32 h-32 rounded-full border-4 border-blue-500 shadow-lg"
-    />
+        <div className="flex flex-col items-center mb-8 relative">
+          {/* Avatar */}
+          <div className="relative">
+            <img
+              src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+              alt="avatar"
+              className="w-32 h-32 rounded-full border-4 border-blue-500 shadow-lg"
+            />
 
-    {/* Icon bút */}
-    <button
-      onClick={editMode ? handleSave : handleEditToggle}
-      className="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full shadow hover:bg-blue-700 transition-all"
-      title={editMode ? "Lưu thay đổi" : "Chỉnh sửa thông tin"}
-    >
-      {editMode ? <FaSave /> : <FaEdit />}
-    </button>
-  </div>
+            {/* Icon bút */}
+            <button
+              onClick={editMode ? handleSave : handleEditToggle}
+              className="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full shadow hover:bg-blue-700 transition-all"
+              title={editMode ? "Lưu thay đổi" : "Chỉnh sửa thông tin"}
+            >
+              {editMode ? <FaSave /> : <FaEdit />}
+            </button>
+          </div>
 
-  {/* Name + Email */} 
-  <h2 className="text-3xl font-bold text-blue-700 mt-4">{user.FullName}</h2>
-  <p className="text-gray-500">{user.Email}</p>
-</div>
-
+          {/* Name + Email */}
+          <h2 className="text-3xl font-bold text-blue-700 mt-4">{user.FullName}</h2>
+          <p className="text-gray-500">{user.Email}</p>
+        </div>
 
         {/* Tabs */}
         <div className="flex justify-center mb-8 rounded-lg overflow-hidden shadow-sm">
@@ -156,21 +197,6 @@ export default function Profile() {
         {/* Nội dung tab */}
         {activeTab === "info" ? (
           <div className="bg-gray-50 p-8 rounded-2xl shadow-inner space-y-4 relative">
-            {/* <button
-              onClick={editMode ? handleSave : handleEditToggle}
-              className="absolute top-6 right-6 bg-blue-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-blue-700 transition-all"
-            >
-              {editMode ? (
-                <>
-                  <FaSave /> Lưu thay đổi
-                </>
-              ) : (
-                <>
-                  <FaEdit /> Chỉnh sửa
-                </>
-              )}
-            </button> */}
-
             {/* Thông tin cá nhân */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
@@ -286,7 +312,11 @@ export default function Profile() {
               </button>
             </div>
 
-            {results.length > 0 ? (
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">
+                Đang tải lịch sử thi...
+              </div>
+            ) : results.length > 0 ? (
               <ul className="space-y-4">
                 {results.map((r) => (
                   <li
@@ -295,14 +325,21 @@ export default function Profile() {
                   >
                     <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-2">
                       <div>
-                        <p className="font-semibold text-blue-700 text-lg">{r.title} (#{r.ExamId})</p>
+                        <p className="font-semibold text-blue-700 text-lg">
+                          {r.title} (#{r.ExamId})
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                          {r.examType}
+                        </p>
                         <p className="text-gray-500 text-sm">
                           Làm bài: {r.startAt} → {r.finishAt}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 mt-2 md:mt-0">
                         <FaTrophy className="text-yellow-500" />
-                        <span className="text-lg font-bold text-green-600">{r.totalScore} điểm</span>
+                        <span className="text-lg font-bold text-green-600">
+                          {r.totalScore} điểm
+                        </span>
                         <button
                           onClick={() => handleViewResult(r.ID)}
                           className="bg-gray-200 hover:bg-blue-500 hover:text-white text-gray-700 px-3 py-1 rounded-md text-sm flex items-center gap-1 transition-all"
@@ -313,12 +350,15 @@ export default function Profile() {
                     </div>
                     <div className="flex flex-wrap gap-6 text-gray-600 text-sm mt-2">
                       <span>
-                        <FaCheckCircle className="inline mr-1 text-green-500" /> Đúng: {r.correctQuestion}
+                        📖 Reading: {r.ScoreReading}
                       </span>
                       <span>
-                        <FaTimesCircle className="inline mr-1 text-red-500" /> Sai: {r.incorrectQuestion}
+                        🎧 Listening: {r.ScoreListening}
                       </span>
-                      <span>⏱ Thời gian làm bài: {r.timeTest} phút</span>
+                      <span>
+                        📊 Tỷ lệ: {r.ScorePercent}%
+                      </span>
+                      <span>⏱ Thời gian: {r.timeTest} phút</span>
                     </div>
                   </li>
                 ))}
