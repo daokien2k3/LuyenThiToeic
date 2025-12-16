@@ -2,80 +2,105 @@ import { useEffect, useState, useMemo } from "react";
 import {
     MessageSquare,
     Trash2,
-    Filter,
+    Search,
     Reply,
     Flag,
     ChevronLeft,
     ChevronRight,
+    Clock,
+    User,
+    FileText,
+    AlertCircle,
+    Check,
+    X,
 } from "lucide-react";
 import axios from "axios";
 
-const BASE_URL = "http://localhost:3001/api/exam";
-const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN;
+const BASE_URL = import.meta.env.VITE_API_URL;
+const ADMIN_TOKEN = import.meta.env.VITE_STUDENT_TOKEN;
 
 export default function AdminComments() {
     const [comments, setComments] = useState([]);
-    const [filterUser, setFilterUser] = useState("");
-    const [filterExam, setFilterExam] = useState("");
+    const [exams, setExams] = useState([]);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [selectedExamId, setSelectedExamId] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all");
     const [openDetail, setOpenDetail] = useState({});
-    const [reports, setReports] = useState([]);
-    const [commentsPerPage, setCommentsPerPage] = useState(10);
+    const [commentsPerPage, setCommentsPerPage] = useState(15);
     const [currentPage, setCurrentPage] = useState(1);
+    const [selectedComments, setSelectedComments] = useState([]);
+    const [loading, setLoading] = useState(false);
 
-    // ================================
-    // 📌 1. Gọi API lấy toàn bộ comment
-    // ================================
+    // Fetch comments
     const fetchAllComments = async () => {
+        setLoading(true);
         try {
-            const res = await axios.get(`${BASE_URL}/comments/exams/1/comments`, {
+            const res = await axios.get(`${BASE_URL}/comments`, {
                 headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
             });
-
             setComments(res.data?.data || []);
         } catch (err) {
-            console.error("Error loading admin comments:", err);
+            console.error("Error loading comments:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Fetch exams
+    const fetchExams = async () => {
+        try {
+            const res = await axios.get(`${BASE_URL}/exams`, {
+                headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+            });
+            setExams(res.data?.data || []);
+        } catch (err) {
+            console.error("Error loading exams:", err);
         }
     };
 
     useEffect(() => {
         fetchAllComments();
+        fetchExams();
     }, []);
 
-    // ================================
-    // 📌 2. Map dữ liệu (đã có author + exam từ API)
-    // ================================
-    const mapComments = useMemo(() => {
-        return comments.map((c) => ({
-            ...c,
-            UserName: c.Author?.FullName || "Không rõ",
-            ExamTitle: c.Exam?.Title || "Không rõ",
-        }));
-    }, [comments]);
+    // Get exam title by ID
+    const getExamTitle = (examId) => {
+        const exam = exams.find((e) => e.ID === examId);
+        return exam ? exam.Title : `Exam #${examId}`;
+    };
 
-    // ================================
-    // 📌 3. Lọc theo user + exam
-    // ================================
+    // Get exams that have comments
+    const examsWithComments = useMemo(() => {
+        const examIds = [...new Set(comments.map((c) => c.ExamID))];
+        return exams.filter((e) => examIds.includes(e.ID));
+    }, [comments, exams]);
+
+    // Filter and search
     const filteredComments = useMemo(() => {
-        let filtered = mapComments;
+        let filtered = comments;
 
-        if (filterUser) {
-            filtered = filtered.filter((c) =>
-                c.UserName.toLowerCase().includes(filterUser.toLowerCase())
+        if (searchTerm) {
+            filtered = filtered.filter(
+                (c) =>
+                    c.Content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    c.Author?.FullName.toLowerCase().includes(searchTerm.toLowerCase())
             );
         }
 
-        if (filterExam) {
-            filtered = filtered.filter((c) =>
-                c.ExamTitle.toLowerCase().includes(filterExam.toLowerCase())
-            );
+        if (selectedExamId) {
+            filtered = filtered.filter((c) => c.ExamID.toString() === selectedExamId);
         }
 
-        return filtered;
-    }, [filterUser, filterExam, mapComments]);
+        if (statusFilter === "replies") {
+            filtered = filtered.filter((c) => c.ParentId !== 0);
+        } else if (statusFilter === "main") {
+            filtered = filtered.filter((c) => c.ParentId === 0);
+        }
 
-    // ================================
-    // 📌 4. Phân trang
-    // ================================
+        return filtered.sort((a, b) => new Date(b.CreateAt) - new Date(a.CreateAt));
+    }, [searchTerm, selectedExamId, statusFilter, comments]);
+
+    // Pagination
     const paginatedComments = useMemo(() => {
         const start = (currentPage - 1) * commentsPerPage;
         return filteredComments.slice(start, start + commentsPerPage);
@@ -85,223 +110,418 @@ export default function AdminComments() {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [filterUser, filterExam, commentsPerPage]);
+    }, [searchTerm, selectedExamId, statusFilter]);
 
-    // ================================
-    // 📌 5. Xoá comment (API thật)
-    // ================================
+    // Delete comment
     const handleDelete = async (id) => {
-        if (!confirm("Bạn có chắc muốn xoá bình luận này?")) return;
+        if (!confirm("Xác nhận xóa bình luận này?")) return;
 
         try {
             await axios.delete(`${BASE_URL}/comments/${id}`, {
                 headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
             });
-
             fetchAllComments();
+            setSelectedComments(selectedComments.filter((cid) => cid !== id));
         } catch (err) {
-            console.error("Delete comment error:", err);
+            console.error("Delete error:", err);
+            alert("Không thể xóa bình luận");
         }
     };
 
-    // ================================
-    // 📌 6. Báo cáo comment (local)
-    // ================================
-    const handleReport = (c) => {
-        const reason = prompt("Nhập lý do báo cáo bình luận:");
-        if (!reason) return;
+    // Bulk delete
+    const handleBulkDelete = async () => {
+        if (selectedComments.length === 0) return;
+        if (!confirm(`Xác nhận xóa ${selectedComments.length} bình luận?`)) return;
 
-        setReports((prev) => [
-            ...prev,
-            {
-                ReportID: Date.now(),
-                CommentID: c.ID,
-                UserName: c.UserName,
-                Content: c.Content,
-                Reason: reason,
-                Time: new Date().toISOString(),
-            },
-        ]);
+        for (const id of selectedComments) {
+            try {
+                await axios.delete(`${BASE_URL}/comments/${id}`, {
+                    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+                });
+            } catch (err) {
+                console.error(`Error deleting comment ${id}:`, err);
+            }
+        }
+
+        setSelectedComments([]);
+        fetchAllComments();
     };
 
-    // ================================
-    // 📌 7. Render giao diện
-    // ================================
+    // Toggle selection
+    const toggleSelect = (id) => {
+        setSelectedComments((prev) =>
+            prev.includes(id) ? prev.filter((cid) => cid !== id) : [...prev, id]
+        );
+    };
+
+    // Select all
+    const toggleSelectAll = () => {
+        if (selectedComments.length === paginatedComments.length) {
+            setSelectedComments([]);
+        } else {
+            setSelectedComments(paginatedComments.map((c) => c.ID));
+        }
+    };
+
+    // Get parent comment
+    const getParentComment = (parentId) => {
+        return comments.find((c) => c.ID === parentId);
+    };
+
+    // Stats
+    const stats = useMemo(() => {
+        return {
+            total: comments.length,
+            mainComments: comments.filter((c) => c.ParentId === 0).length,
+            replies: comments.filter((c) => c.ParentId !== 0).length,
+        };
+    }, [comments]);
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 p-8">
-            <h2 className="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent">
-                Quản lý bình luận
-            </h2>
-
-            <div className="grid grid-cols-3 gap-6 h-full overflow-hidden">
-
-                {/* ====== Cột trái ====== */}
-                <div className="space-y-4 pr-4 overflow-y-auto">
-
-                    {/* Bộ lọc */}
-                    <div>
-                        <label className="font-semibold block mb-1">Lọc theo tên người dùng</label>
-                        <input
-                            type="text"
-                            placeholder="Nhập tên user..."
-                            value={filterUser}
-                            onChange={(e) => setFilterUser(e.target.value)}
-                            className="w-full p-2 border rounded-lg mb-2"
-                        />
-
-                        <label className="font-semibold block mb-1">Lọc theo bài thi</label>
-                        <input
-                            type="text"
-                            placeholder="Nhập tên bài thi..."
-                            value={filterExam}
-                            onChange={(e) => setFilterExam(e.target.value)}
-                            className="w-full p-2 border rounded-lg"
-                        />
-                    </div>
-
-                    {/* Số comment mỗi trang */}
-                    <div>
-                        <label className="font-semibold block mb-1">Số bình luận mỗi trang</label>
-                        <input
-                            type="number"
-                            min="1"
-                            value={commentsPerPage}
-                            onChange={(e) =>
-                                setCommentsPerPage(Number(e.target.value) || 10)
-                            }
-                            className="w-full p-2 border rounded-lg"
-                        />
-                    </div>
-
-                    {/* Báo cáo */}
-                    <div className="p-4 bg-red-50 border rounded-lg">
-                        <h3 className="font-bold text-red-600 flex items-center gap-2">
-                            <Flag size={18} /> Báo cáo vi phạm
-                        </h3>
-
-                        {reports.length === 0 ? (
-                            <p className="text-sm text-gray-600 mt-2">Chưa có báo cáo nào.</p>
-                        ) : (
-                            reports.map((r) => (
-                                <div key={r.ReportID} className="p-3 bg-white mt-3 rounded border">
-                                    <p className="font-semibold">
-                                        #{r.CommentID} – {r.UserName}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                        {new Date(r.Time).toLocaleString()}
-                                    </p>
-                                    <p className="text-sm mt-1">
-                                        <b>Lý do:</b> {r.Reason}
-                                    </p>
-                                    <p className="text-xs mt-2 p-2 rounded bg-gray-100">
-                                        {r.Content}
-                                    </p>
-                                </div>
-                            ))
+        <div className="min-h-screen bg-gray-50">
+            {/* Header */}
+            <div className="bg-white border-b sticky top-0 z-10">
+                <div className="max-w-7xl mx-auto px-6 py-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Quản lý bình luận</h1>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Theo dõi và kiểm duyệt bình luận từ người dùng
+                            </p>
+                        </div>
+                        {selectedComments.length > 0 && (
+                            <button
+                                onClick={handleBulkDelete}
+                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                            >
+                                <Trash2 size={16} />
+                                Xóa {selectedComments.length} mục
+                            </button>
                         )}
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+                            <div className="text-xs text-blue-600">Tổng bình luận</div>
+                        </div>
+                        <div className="bg-green-50 p-3 rounded-lg">
+                            <div className="text-2xl font-bold text-green-600">
+                                {stats.mainComments}
+                            </div>
+                            <div className="text-xs text-green-600">Bình luận chính</div>
+                        </div>
+                        <div className="bg-purple-50 p-3 rounded-lg">
+                            <div className="text-2xl font-bold text-purple-600">{stats.replies}</div>
+                            <div className="text-xs text-purple-600">Phản hồi</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filters */}
+            <div className="max-w-7xl mx-auto px-6 py-4">
+                <div className="bg-white rounded-lg p-4 shadow-sm mb-4">
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="col-span-2">
+                            <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                Tìm kiếm
+                            </label>
+                            <div className="relative">
+                                <Search
+                                    size={18}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Tìm theo nội dung hoặc tên người dùng..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                Đề thi
+                            </label>
+                            <select
+                                value={selectedExamId}
+                                onChange={(e) => setSelectedExamId(e.target.value)}
+                                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="">Tất cả đề thi</option>
+                                {examsWithComments.map((exam) => (
+                                    <option key={exam.ID} value={exam.ID}>
+                                        {exam.Title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 mb-2 block">
+                                Loại bình luận
+                            </label>
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="all">Tất cả</option>
+                                <option value="main">Bình luận chính</option>
+                                <option value="replies">Phản hồi</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
-                {/* ====== Cột phải ====== */}
-                <div className="col-span-2 border-l pl-4 flex flex-col">
-
-                    <div className="flex items-center gap-2 mb-4 text-gray-600">
-                        <Filter size={20} />
-                        <span>Danh sách bình luận (Trang {currentPage} / {totalPages})</span>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto pr-3 space-y-3">
-                        {paginatedComments.map((c) => {
-                            const parent = mapComments.find((p) => p.ID === c.ParentId);
-
-                            return (
-                                <div
-                                    key={c.ID}
-                                    className="p-4 border bg-gray-50 rounded-lg shadow-sm"
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <div className="font-semibold flex items-center gap-2">
-                                                <MessageSquare size={18} />
-                                                #{c.ID} – {c.UserName}
-                                            </div>
-
-                                            <div className="text-sm text-gray-600">
-                                                {new Date(c.CreateAt).toLocaleDateString()}
-                                            </div>
-
-                                            <div className="text-xs text-blue-600 mt-1">
-                                                Bài thi: {c.ExamID}
-                                            </div>
-
-                                            {parent && (
-                                                <div className="text-xs text-purple-700 flex items-center gap-1 mt-1">
-                                                    <Reply size={14} /> Trả lời bình luận #{parent.ID}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex gap-3">
-                                            <button
-                                                className="p-2 text-red-600"
-                                                onClick={() => handleDelete(c.ID)}
-                                            >
-                                                <Trash2 size={20} />
-                                            </button>
-
-                                            <button
-                                                className="p-2 text-yellow-600"
-                                                onClick={() => handleReport(c)}
-                                            >
-                                                <Flag size={20} />
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Toggle nội dung */}
-                                    <button
-                                        className="mt-3 px-3 py-1 rounded bg-white border"
-                                        onClick={() =>
-                                            setOpenDetail((prev) => ({
-                                                ...prev,
-                                                [c.ID]: !prev[c.ID],
-                                            }))
-                                        }
-                                    >
-                                        {openDetail[c.ID] ? "Ẩn nội dung" : "Xem nội dung"}
-                                    </button>
-
-                                    {openDetail[c.ID] && (
-                                        <div className="mt-3 p-3 bg-white border rounded-lg text-sm">
-                                            {c.Content}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="flex justify-center items-center gap-4 mt-4 pb-4">
-                            <button
-                                onClick={() => setCurrentPage(currentPage - 1)}
-                                disabled={currentPage === 1}
-                                className="p-2 bg-blue-500 text-white rounded disabled:bg-gray-300"
-                            >
-                                <ChevronLeft />
-                            </button>
-
-                            <span>Trang {currentPage} / {totalPages}</span>
-
-                            <button
-                                onClick={() => setCurrentPage(currentPage + 1)}
-                                disabled={currentPage === totalPages}
-                                className="p-2 bg-blue-500 text-white rounded disabled:bg-gray-300"
-                            >
-                                <ChevronRight />
-                            </button>
+                {/* Comments Table */}
+                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                    {loading ? (
+                        <div className="p-12 text-center text-gray-500">
+                            <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                            Đang tải...
                         </div>
+                    ) : paginatedComments.length === 0 ? (
+                        <div className="p-12 text-center text-gray-500">
+                            <AlertCircle size={48} className="mx-auto mb-4 text-gray-300" />
+                            <p>Không tìm thấy bình luận nào</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={
+                                                        selectedComments.length ===
+                                                        paginatedComments.length
+                                                    }
+                                                    onChange={toggleSelectAll}
+                                                    className="rounded"
+                                                />
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                                                Người dùng
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                                                Nội dung
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                                                Đề thi
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                                                Thời gian
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                                                Phản hồi
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
+                                                Thao tác
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {paginatedComments.map((c) => {
+                                            const parent = getParentComment(c.ParentId);
+                                            const isExpanded = openDetail[c.ID];
+
+                                            return (
+                                                <tr
+                                                    key={c.ID}
+                                                    className={`hover:bg-gray-50 transition-colors ${
+                                                        selectedComments.includes(c.ID)
+                                                            ? "bg-blue-50"
+                                                            : ""
+                                                    }`}
+                                                >
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedComments.includes(c.ID)}
+                                                            onChange={() => toggleSelect(c.ID)}
+                                                            className="rounded"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-semibold">
+                                                                {c.Author?.FullName?.[0] || "?"}
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-medium text-sm">
+                                                                    {c.Author?.FullName || "Unknown"}
+                                                                </div>
+                                                                <div className="text-xs text-gray-500">
+                                                                    ID: {c.Author?.ID}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 max-w-md">
+                                                        <div>
+                                                            <p
+                                                                className={`text-sm text-gray-700 ${
+                                                                    isExpanded
+                                                                        ? ""
+                                                                        : "line-clamp-2"
+                                                                }`}
+                                                            >
+                                                                {c.Content}
+                                                            </p>
+                                                            {c.Content.length > 100 && (
+                                                                <button
+                                                                    onClick={() =>
+                                                                        setOpenDetail((prev) => ({
+                                                                            ...prev,
+                                                                            [c.ID]: !prev[c.ID],
+                                                                        }))
+                                                                    }
+                                                                    className="text-xs text-blue-600 hover:underline mt-1"
+                                                                >
+                                                                    {isExpanded
+                                                                        ? "Thu gọn"
+                                                                        : "Xem thêm"}
+                                                                </button>
+                                                            )}
+                                                            {parent && (
+                                                                <div className="mt-2 flex items-start gap-1 text-xs text-purple-600 bg-purple-50 p-2 rounded">
+                                                                    <Reply size={12} className="mt-0.5" />
+                                                                    <span>
+                                                                        Phản hồi:{" "}
+                                                                        <span className="font-medium">
+                                                                            {parent.Author?.FullName}
+                                                                        </span>{" "}
+                                                                        - "{parent.Content.slice(0, 40)}
+                                                                        ..."
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                                            {getExamTitle(c.ExamID)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="text-xs text-gray-500">
+                                                            {new Date(c.CreateAt).toLocaleDateString(
+                                                                "vi-VN"
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-gray-400">
+                                                            {new Date(c.CreateAt).toLocaleTimeString(
+                                                                "vi-VN"
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {c.ReplyCount > 0 && (
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                                {c.ReplyCount} phản hồi
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex justify-end gap-2">
+                                                            <button
+                                                                onClick={() => handleDelete(c.ID)}
+                                                                className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                                title="Xóa"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Pagination */}
+                            <div className="px-6 py-4 border-t bg-gray-50 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-sm text-gray-600">
+                                        Hiển thị {(currentPage - 1) * commentsPerPage + 1} -{" "}
+                                        {Math.min(
+                                            currentPage * commentsPerPage,
+                                            filteredComments.length
+                                        )}{" "}
+                                        / {filteredComments.length} kết quả
+                                    </span>
+                                    <select
+                                        value={commentsPerPage}
+                                        onChange={(e) =>
+                                            setCommentsPerPage(Number(e.target.value))
+                                        }
+                                        className="px-3 py-1 border rounded text-sm"
+                                    >
+                                        <option value={10}>10 / trang</option>
+                                        <option value={15}>15 / trang</option>
+                                        <option value={25}>25 / trang</option>
+                                        <option value={50}>50 / trang</option>
+                                    </select>
+                                </div>
+
+                                {totalPages > 1 && (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setCurrentPage(currentPage - 1)}
+                                            disabled={currentPage === 1}
+                                            className="p-2 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <ChevronLeft size={18} />
+                                        </button>
+
+                                        <div className="flex items-center gap-1">
+                                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                                .filter(
+                                                    (page) =>
+                                                        page === 1 ||
+                                                        page === totalPages ||
+                                                        Math.abs(page - currentPage) <= 1
+                                                )
+                                                .map((page, idx, arr) => (
+                                                    <div key={page} className="flex items-center">
+                                                        {idx > 0 && arr[idx - 1] !== page - 1 && (
+                                                            <span className="px-2 text-gray-400">
+                                                                ...
+                                                            </span>
+                                                        )}
+                                                        <button
+                                                            onClick={() => setCurrentPage(page)}
+                                                            className={`px-3 py-1 rounded ${
+                                                                currentPage === page
+                                                                    ? "bg-blue-600 text-white"
+                                                                    : "hover:bg-gray-100"
+                                                            }`}
+                                                        >
+                                                            {page}
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setCurrentPage(currentPage + 1)}
+                                            disabled={currentPage === totalPages}
+                                            className="p-2 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <ChevronRight size={18} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </>
                     )}
                 </div>
             </div>

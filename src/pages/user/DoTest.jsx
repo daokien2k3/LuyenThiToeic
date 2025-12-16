@@ -167,7 +167,8 @@ export default function DoTest() {
             navigate(-1); // hoặc navigate("/exams") nếu bạn muốn về trang cụ thể
         } catch (err) {
             console.error("Delete attempt error:", err.response?.data || err);
-            alert("Có lỗi khi xóa attempt, nhưng bạn sẽ được chuyển về trang trước.");
+            alert("Có lỗi khi xóa");
+            // alert("Có lỗi khi xóa attempt, nhưng bạn sẽ được chuyển về trang trước.");
             navigate(-1);
         } finally {
             setIsExiting(false);
